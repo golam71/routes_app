@@ -1,0 +1,46 @@
+---
+import data from "../data/dhaka-city-local-bus.json";
+
+let array = [];
+for (let i = 0; i < data.busData.length; i++) {
+  for (let j = 0; j < data.busData[i].routes.length; j++) {
+    array.push(data.busData[i].routes[j]);
+  }
+}
+
+let autoCompleteArray = [...new Set(array)];
+---
+
+<div class="swiper-slide p-3 flex! flex-col justify-center align-middle">
+  <h1 class="text-3xl font-bold text-center">Route Finder</h1>
+
+  <label for="current" class="my-8 mx-4">
+    Current Location?
+    <br />
+    <input
+      type="text"
+      id="current"
+      class="border-2 mt-2 p-2 rounded-sm w-full"
+      list="datalist"
+    />
+  </label>
+
+  <label for="current" class="my-8 mx-4">
+    Future Destination?
+    <br />
+    <input
+      type="text"
+      id="future"
+      class="border-2 mt-2 p-2 rounded-sm w-full"
+      list="datalist"
+    />
+  </label>
+
+  <button class="max-w-fit mx-auto bg-accent text-black px-3 py-2 rounded-sm"
+    >Show Route</button
+  >
+
+  <datalist id="datalist">
+    {autoCompleteArray.map((a) => <option value={a} />)}
+  </datalist>
+</div>

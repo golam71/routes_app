@@ -1,0 +1,153 @@
+---
+import data from "../data/dhaka-city-local-bus.json";
+---
+
+<div class="swiper-slide min-h-screen p-4">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-heading text-2xl font-bold mb-4 text-center">
+      Dhaka City Local Buses
+    </h1>
+
+    <input
+      id="busSearch"
+      type="text"
+      placeholder="Search by bus name or location..."
+      class="w-full p-2 mb-4 rounded-sm bg-light-bg text-text border-2 border-border-color"
+    />
+
+    <!-- max-h-[70vh]  -->
+    <div
+      id="busList"
+      class="overflow-y-scroll max-h-[75vh] space-y-4 rounded-sm no-scrollbar"
+    >
+      {
+        data.busData.map((d) => (
+          <div
+            class="bus-card opacity-0 translate-y-4 bg-light-bg p- rounded-sm shadow hover:shadow-lg transition-all cursor-pointer"
+            data-english={d.english.toLowerCase()}
+            data-bangle={d.bangle}
+            data-routes={d.routes.join(" ").toLowerCase()}
+          >
+            <img
+              src={"/bus_images/" + d.image}
+              alt={d.english}
+              class="w-full h-40 object-cover rounded-sm "
+            />
+            <h2 class="text-heading text-lg font-semibold  p-1 text-center">
+              {d.english}
+            </h2>
+
+            <div class="routes hidden p-2 overflow-hidden">
+              {d.routes.map((r) => (
+                <div class="flex p-1">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="26"
+                    height="26"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M12 19.35q3.05-2.8 4.525-5.087T18 10.2q0-2.725-1.737-4.462T12 4T7.738 5.738T6 10.2q0 1.775 1.475 4.063T12 19.35m0 1.975q-.35 0-.7-.125t-.625-.375Q9.05 19.325 7.8 17.9t-2.087-2.762t-1.275-2.575T4 10.2q0-3.75 2.413-5.975T12 2t5.588 2.225T20 10.2q0 1.125-.437 2.363t-1.275 2.575T16.2 17.9t-2.875 2.925q-.275.25-.625.375t-.7.125M12 12q.825 0 1.413-.587T14 10t-.587-1.412T12 8t-1.412.588T10 10t.588 1.413T12 12"
+                    />
+                  </svg>
+                  <p class="route-item  text-sm leading-relaxed">{r}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</div>
+
+<script>
+  import { gsap } from "gsap";
+
+  const cards = document.querySelectorAll(".bus-card");
+  const searchInput = document.getElementById("busSearch");
+
+  // Initial fade in
+  gsap.to(cards, {
+    opacity: 1,
+    y: 0,
+    duration: 0.5,
+    stagger: 0.08,
+    ease: "power2.out",
+  });
+
+  // Click to toggle route visibility
+  cards.forEach((card) => {
+    card.addEventListener("click", () => {
+      const routes = card.querySelector(".routes");
+      const isVisible = !routes.classList.contains("hidden");
+
+      if (isVisible) {
+        gsap.to(routes, {
+          height: 0,
+          opacity: 0,
+          duration: 0.3,
+          onComplete: () => routes.classList.add("hidden"),
+        });
+      } else {
+        routes.classList.remove("hidden");
+        const height = routes.scrollHeight;
+        gsap.fromTo(
+          routes,
+          { height: 0, opacity: 0 },
+          { height, opacity: 1, duration: 0.4, ease: "power2.out" }
+        );
+      }
+    });
+  });
+
+  // Search logic with highlighting
+  searchInput.addEventListener("input", () => {
+    const value = searchInput.value.toLowerCase();
+    cards.forEach((card) => {
+      const english = card.dataset.english;
+      const bangle = card.dataset.bangle;
+      const routes = card.dataset.routes;
+
+      const match =
+        english.includes(value) ||
+        bangle.includes(value) ||
+        routes.includes(value);
+
+      if (match || value === "") {
+        card.style.display = "block";
+        gsap.to(card, { opacity: 1, y: 0, duration: 0.3 });
+      } else {
+        gsap.to(card, { opacity: 0, y: 10, duration: 0.3 });
+        setTimeout(() => (card.style.display = "none"), 300);
+      }
+
+      // Highlight matching text
+      const routeItems = card.querySelectorAll(".route-item");
+      routeItems.forEach((item) => {
+        const text = item.textContent;
+        if (value && text.toLowerCase().includes(value)) {
+          const regex = new RegExp(`(${value})`, "gi");
+          item.innerHTML = text.replace(
+            regex,
+            `<span class='text-accent font-semibold'>$1</span>`
+          );
+        } else {
+          item.innerHTML = text;
+        }
+      });
+    });
+  });
+</script>
+
+<style>
+  .no-scrollbar {
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+    scrollbar-width: none; /* Firefox, Safari 18.2+, Chromium 121+ */
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+</style>

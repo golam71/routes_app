@@ -1,0 +1,79 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Home from "../components/Home.astro";
+import Bus from "../components/Bus.astro";
+import Database from "../components/Database.astro";
+---
+
+<Layout>
+  <div class="swiper">
+    <div class="swiper-wrapper">
+      <Bus />
+      <Home />
+      <Database />
+    </div>
+  </div>
+
+  <div class="swiper-pagination mb-2"></div>
+</Layout>
+
+<script>
+  import Swiper from "swiper";
+  import { Pagination } from "swiper/modules";
+  import "swiper/css";
+  import "swiper/css/pagination";
+
+  const emojiLabels = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m12 3l8 6v12h-5v-7H9v7H4V9z"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M18 11H6V6h12m-1.5 11a1.5 1.5 0 0 1-1.5-1.5a1.5 1.5 0 0 1 1.5-1.5a1.5 1.5 0 0 1 1.5 1.5a1.5 1.5 0 0 1-1.5 1.5m-9 0A1.5 1.5 0 0 1 6 15.5A1.5 1.5 0 0 1 7.5 14A1.5 1.5 0 0 1 9 15.5A1.5 1.5 0 0 1 7.5 17M4 16c0 .88.39 1.67 1 2.22V20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4z"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4s8-1.79 8-4s-3.58-4-8-4M4 9v3c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 5v3c0 2.21 3.58 4 8 4s8-1.79 8-4v-3c0 2.21-3.58 4-8 4s-8-1.79-8-4"/></svg>',
+  ];
+
+  var swiper = new Swiper(".swiper", {
+    loop: true,
+    modules: [Pagination],
+    pagination: {
+      el: ".swiper-pagination",
+      clickable: true,
+      renderBullet: (index, className) =>
+        `<span class="${className}">${emojiLabels[index]}</span>`,
+    },
+  });
+</script>
+
+<style>
+  html {
+    height: 100%;
+  }
+
+  .flex {
+    display: flex;
+    justify-content: center;
+  }
+
+  .swiper-wrapper,
+  .swiper,
+  body {
+    height: 100%;
+  }
+</style>
+
+<style is:global>
+  .swiper-pagination-bullet-active,
+  .swiper-pagination-bullet {
+    background: none !important;
+  }
+
+  .swiper-pagination-bullet-active {
+    color: var(--color-accent);
+  }
+
+  .swiper-pagination-bullet {
+    margin: 0px 40px !important;
+  }
+
+  .swiper-slide {
+    padding-bottom: 50px; /* keeps content away from bottom */
+    box-sizing: border-box; /* ensures padding doesn’t overflow */
+  }
+</style>
