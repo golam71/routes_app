@@ -1,46 +1,32 @@
-# Astro Starter Kit: Basics
+# A bus routes app
 
-```sh
-npm create astro@latest -- --template basics
-```
+A app where users can see bus routes and flag or request updates. Through the means of crowdsourcing we eliminate manual maintainanace.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Technologies 
 
-## 🚀 Project Structure
+- **[Astro](https://astro.build/)** – a modern framework for building fast, content-focused websites.
+- **[Tailwind CSS](https://tailwindcss.com/)** – a utility-first CSS framework for rapid UI styling.
+- **[GSAP](https://gsap.com/)** – a high-performance animation library.
 
-Inside of your Astro project, you'll see the following folders and files:
 
-```text
-/
-├── public/
-│   └── favicon.svg
-├── src
-│   ├── assets
-│   │   └── astro.svg
-│   ├── components
-│   │   └── Welcome.astro
-│   ├── layouts
-│   │   └── Layout.astro
-│   └── pages
-│       └── index.astro
-└── package.json
-```
+## Done tasks 
 
-To learn more about the folder structure of an Astro project, refer to [our guide on project structure](https://docs.astro.build/en/basics/project-structure/).
+- Implement frontend structure.
+- Add simple componenets for the basic items such as `bus`
+- Read local data and generate UI based on that.
+- CI/CD pipeline via `vercel`
 
-## 🧞 Commands
+## TODO
 
-All commands are run from the root of the project, from a terminal:
+- Intitialize a backend via [supabase](https://supabase.com/)
+- Move the local data.
+  - `JSON` as a table.
+  - `images` as a storage object as in bucket.
+- Making it so that users can request edits or flag routes.
+- Storing user uploaded data in supabase.
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+## Git convention
 
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- Follow [gitmoji](https://gitmoji.dev/) convention strictly.
+- Try to make new changes via pull requests.
+- Explain what it is in short and consise way.
