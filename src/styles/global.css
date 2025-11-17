@@ -1,1 +1,33 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&display=swap");
+
 @import "tailwindcss";
+
+@theme {
+  --color-main-bg: #0f111a;
+  --color-dark-bg: #090b10;
+  --color-light-bg: #1a1e2e;
+
+  --color-text: #e4ecff;
+  --color-accent: #84ffff;
+  --color-tertiary: #ff5370;
+  --color-heading: #eeffff;
+
+  --color-opacity: 50%;
+  --color-border-color: color-mix(
+    in srgb,
+    currentColor var(--opacity),
+    transparent
+  );
+  --color-radius: 10px;
+  --color-table-border-width: 1px;
+}
+
+* {
+  box-sizing: border-box !important;
+}
+
+body {
+  font-family: "Roboto Flex", sans-serif;
+  background-color: var(--color-main-bg);
+  color: var(--color-text);
+}
