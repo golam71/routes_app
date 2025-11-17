@@ -25,6 +25,11 @@ A app where users can see bus routes and flag or request updates. Through the me
 - Making it so that users can request edits or flag routes.
 - Storing user uploaded data in supabase.
 
+## Project mapping
+
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/63dba484-f847-4edc-9f0e-409635eaa9d5" />
+
+
 ## Git convention
 
 - Follow [gitmoji](https://gitmoji.dev/) convention strictly.
