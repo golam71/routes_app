@@ -1,31 +1,97 @@
 ---
-import data from "../data/dhaka-city-local-bus.json";
+import { createClient } from "@supabase/supabase-js";
 
-let array = [];
-for (let i = 0; i < data.busData.length; i++) {
-  for (let j = 0; j < data.busData[i].routes.length; j++) {
-    array.push(data.busData[i].routes[j]);
+const supabaseUrl = import.meta.env.SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("Missing SUPABASE_URL or SUPABASE_KEY env vars");
+  throw new Error("Supabase env vars not set");
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// get full bus data (with images + routes)
+const { data: busData, error } = await supabase
+  .from("bus_data")
+  .select("id, english, bangle, image, routes, time, service_type");
+
+if (error) {
+  console.error("Error loading bus data:", error);
+}
+
+// Build unique stops with coords from all routes
+const stopMap = new Map<
+  string,
+  { name: string; lat: number | null; lon: number | null }
+>();
+
+for (const bus of busData ?? []) {
+  if (!Array.isArray(bus.routes)) continue;
+  for (const r of bus.routes) {
+    if (!r) continue;
+
+    const name = (r.name ?? "").trim();
+    if (!name) continue;
+
+    if (!stopMap.has(name)) {
+      stopMap.set(name, {
+        name,
+        lat: typeof r.lat === "number" ? r.lat : r.lat ? Number(r.lat) : null,
+        lon: typeof r.lon === "number" ? r.lon : r.lon ? Number(r.lon) : null,
+      });
+    }
   }
 }
 
-let autoCompleteArray = [...new Set(array)];
+const stops = Array.from(stopMap.values());
+const autoCompleteArray = stops.map((s) => s.name);
 ---
 
-<div class="swiper-slide p-3 flex! flex-col justify-center align-middle">
+<!-- Icon sprite (hidden) -->
+<svg style="display: none">
+  <symbol viewBox="0 0 24 24" id="material-symbols-location-on">
+    <!-- Icon from Material Symbols by Google - https://github.com/google/material-design-icons/blob/master/LICENSE -->
+    <path
+      fill="black"
+      d="M12 12q.825 0 1.413-.587T14 10t-.587-1.412T12 8t-1.412.588T10 10t.588 1.413T12 12m0 10q-4.025-3.425-6.012-6.362T4 10.2q0-3.75 2.413-5.975T12 2t5.588 2.225T20 10.2q0 2.5-1.987 5.438T12 22"
+    ></path>
+  </symbol>
+</svg>
+
+<div
+  id="routeFinder"
+  class="swiper-slide h-screen overflow-y-scroll no-scrollbar p-3 flex! flex-col justify-start align-middle"
+  data-stops={JSON.stringify(stops)}
+  data-buses={JSON.stringify(busData ?? [])}
+>
   <h1 class="text-3xl font-bold text-center">Route Finder</h1>
 
   <label for="current" class="my-8 mx-4">
     Current Location?
     <br />
-    <input
-      type="text"
-      id="current"
-      class="border-2 mt-2 p-2 rounded-sm w-full"
-      list="datalist"
-    />
+    <div class="flex gap-2 mt-2 items-center">
+      <input
+        type="text"
+        id="current"
+        class="border-2 p-2 rounded-sm w-full"
+        list="datalist"
+      />
+      <button
+        type="button"
+        id="useLocation"
+        class="flex items-center justify-center bg-accent text-black px-3 py-2 rounded-sm"
+        aria-label="Use My Location"
+        title="Use My Location"
+      >
+        <svg width="24" height="24" aria-hidden="true">
+          <use href="#material-symbols-location-on"></use>
+        </svg>
+      </button>
+    </div>
   </label>
 
-  <label for="current" class="my-8 mx-4">
+  <label for="future" class="my-8 mx-4">
     Future Destination?
     <br />
     <input
@@ -36,11 +102,462 @@ let autoCompleteArray = [...new Set(array)];
     />
   </label>
 
-  <button class="max-w-fit mx-auto bg-accent text-black px-3 py-2 rounded-sm"
-    >Show Route</button
+  <button
+    id="showRouteBtn"
+    class="max-w-fit mx-auto bg-accent text-black px-3 py-2 rounded-sm"
   >
+    Show Route
+  </button>
+
+  <!-- RESULT AREA: buses + images + hops -->
+  <div id="routeResults" class="mt-6 mx-4 space-y-4"></div>
 
   <datalist id="datalist">
     {autoCompleteArray.map((a) => <option value={a} />)}
   </datalist>
 </div>
+
+<script>
+  // Haversine distance in meters
+  function distanceMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth radius m
+    const toRad = (v) => (v * Math.PI) / 180;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  function findNearestStop(lat, lon, stops) {
+    let bestStop = null;
+    let bestDistance = Infinity;
+
+    for (const stop of stops) {
+      if (stop.lat == null || stop.lon == null) continue;
+
+      const d = distanceMeters(lat, lon, Number(stop.lat), Number(stop.lon));
+
+      if (d < bestDistance) {
+        bestDistance = d;
+        bestStop = stop;
+      }
+    }
+
+    return { bestStop, bestDistance };
+  }
+
+  function getPositionOnce(options) {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  }
+
+  async function getPositionWithRetries(options, maxAttempts = 3) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const pos = await getPositionOnce(options);
+        return pos;
+      } catch (err) {
+        lastError = err;
+        if (err.code === err.PERMISSION_DENIED) {
+          break;
+        }
+      }
+    }
+
+    throw lastError || new Error("Geolocation failed");
+  }
+
+  // ---------- ROUTE LOGIC USING BUS DATA ----------
+
+  function normalizeName(name) {
+    return (name || "").trim().toLowerCase();
+  }
+
+  function busHasStop(bus, stopName) {
+    const target = normalizeName(stopName);
+    const names = (bus.routes || []).map((r) => normalizeName(r && r.name));
+    return names.includes(target);
+  }
+
+  function findDirectBuses(fromName, toName, buses) {
+    const fromN = normalizeName(fromName);
+    const toN = normalizeName(toName);
+
+    return buses
+      .map((bus) => {
+        const names = (bus.routes || []).map((r) => normalizeName(r && r.name));
+        const fromIdx = names.indexOf(fromN);
+        const toIdx = names.indexOf(toN);
+
+        if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return null;
+
+        return { bus, fromIdx, toIdx };
+      })
+      .filter(Boolean);
+  }
+
+  function findTransferOptions(fromName, toName, buses, maxResults = 10) {
+    const fromN = normalizeName(fromName);
+    const toN = normalizeName(toName);
+
+    const busesFrom = buses.filter((b) => busHasStop(b, fromN));
+    const busesTo = buses.filter((b) => busHasStop(b, toN));
+
+    const results = [];
+    const seen = new Set();
+
+    for (const busA of busesFrom) {
+      const routeA = (busA.routes || []).map((r) => normalizeName(r && r.name));
+
+      for (const busB of busesTo) {
+        if (busA.id === busB.id) continue;
+
+        const routeB = (busB.routes || []).map((r) =>
+          normalizeName(r && r.name)
+        );
+
+        for (const stopName of routeA) {
+          if (!stopName || stopName === fromN || stopName === toN) continue;
+          if (!routeB.includes(stopName)) continue;
+
+          const key = busA.id + "-" + busB.id + "-" + stopName;
+          if (seen.has(key)) continue;
+          seen.add(key);
+
+          results.push({
+            busA,
+            busB,
+            transferStop: stopName,
+          });
+
+          if (results.length >= maxResults) return results;
+        }
+      }
+    }
+
+    return results;
+  }
+
+  function createRouteList(segmentNames) {
+    const routes = document.createElement("div");
+    routes.className = "routes mt-1 p-2 overflow-hidden";
+
+    segmentNames.forEach((stopName) => {
+      const row = document.createElement("div");
+      row.className = "flex p-1";
+
+      const icon = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "svg"
+      );
+      icon.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      icon.setAttribute("width", "26");
+      icon.setAttribute("height", "26");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.innerHTML =
+        '<path fill="currentColor" d="M12 19.35q3.05-2.8 4.525-5.087T18 10.2q0-2.725-1.737-4.462T12 4T7.738 5.738T6 10.2q0 1.775 1.475 4.063T12 19.35m0 1.975q-.35 0-.7-.125t-.625-.375Q9.05 19.325 7.8 17.9t-2.087-2.762t-1.275-2.575T4 10.2q0-3.75 2.413-5.975T12 2t5.588 2.225T20 10.2q0 1.125-.437 2.363t-1.275 2.575T16.2 17.9t-2.875 2.925q-.275.25-.625.375t-.7.125M12 12q.825 0 1.413-.587T14 10t-.587-1.412T12 8t-1.412.588T10 10t.588 1.413T12 12"/>';
+
+      const p = document.createElement("p");
+      p.className = "route-item text-sm leading-relaxed";
+      p.textContent = stopName;
+
+      row.appendChild(icon);
+      row.appendChild(p);
+      routes.appendChild(row);
+    });
+
+    return routes;
+  }
+
+  function renderRouteResults(
+    container,
+    { fromName, toName, directTrips, transfers, imageBase }
+  ) {
+    container.innerHTML = "";
+
+    if (!directTrips.length && !transfers.length) {
+      container.innerHTML =
+        '<p class="text-sm text-red-500">No matching buses found between these stops.</p>';
+      return;
+    }
+
+    const title = document.createElement("h2");
+    title.className = "text-lg font-semibold mb-2";
+    title.textContent = `Options from "${fromName}" to "${toName}"`;
+    container.appendChild(title);
+
+    // ===== DIRECT BUSES =====
+    if (directTrips.length) {
+      const h = document.createElement("h3");
+      h.className = "mt-3 font-semibold text-sm";
+      h.textContent = "Direct buses:";
+      container.appendChild(h);
+
+      const list = document.createElement("div");
+      list.className = "mt-2 space-y-4";
+
+      directTrips.forEach((trip) => {
+        const bus = trip.bus;
+
+        const card = document.createElement("div");
+        card.className =
+          "bus-card bg-light-bg p-2 rounded-sm shadow hover:shadow-lg transition-all";
+
+        // Full-width image
+        const img = document.createElement("img");
+        img.src = imageBase + bus.image;
+        img.alt = bus.english || "Bus";
+        img.className = "w-full h-40 object-cover rounded-sm";
+        card.appendChild(img);
+
+        // Bus name
+        const name = document.createElement("h3");
+        name.className = "text-heading text-lg font-semibold p-1 text-center";
+        name.textContent = bus.english || bus.bangle || "Unknown bus";
+        card.appendChild(name);
+
+        // Direct relation
+        const relation = document.createElement("p");
+        relation.className = "text-xs mt-1 text-center text-muted font-medium";
+        relation.textContent = `${fromName} → ${toName} (direct)`;
+        card.appendChild(relation);
+
+        // Segment between FROM and TO as list
+        const routeNames = (bus.routes || [])
+          .map((r) => r && r.name)
+          .filter(Boolean);
+        const lowerNames = routeNames.map((n) => normalizeName(n));
+        const fromIdx = lowerNames.indexOf(normalizeName(fromName));
+        const toIdx = lowerNames.indexOf(normalizeName(toName));
+
+        if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+          const start = Math.min(fromIdx, toIdx);
+          const end = Math.max(fromIdx, toIdx);
+          const segmentNames = routeNames.slice(start, end + 1);
+          const routesList = createRouteList(segmentNames);
+          card.appendChild(routesList);
+        }
+
+        list.appendChild(card);
+      });
+
+      container.appendChild(list);
+    }
+
+    // ===== TRANSFER OPTIONS =====
+    if (transfers.length) {
+      const h = document.createElement("h3");
+      h.className = "mt-4 font-semibold text-sm";
+      h.textContent = "With one transfer (change bus once):";
+      container.appendChild(h);
+
+      const list = document.createElement("div");
+      list.className = "mt-2 space-y-4";
+
+      transfers.forEach((opt) => {
+        const busA = opt.busA;
+        const busB = opt.busB;
+        const transferStop = opt.transferStop;
+
+        const card = document.createElement("div");
+        card.className = "bg-light-bg p-2 rounded-sm shadow space-y-3";
+
+        // STEP 1 – Bus A: fromName → transferStop + segment list
+        const step1 = document.createElement("div");
+        step1.className = "flex flex-col";
+
+        const img1 = document.createElement("img");
+        img1.src = imageBase + busA.image;
+        img1.alt = busA.english || "Bus A";
+        img1.className = "w-full h-36 object-cover rounded-sm";
+        step1.appendChild(img1);
+
+        const info1 = document.createElement("div");
+        info1.className = "mt-2 text-xs text-center";
+        info1.innerHTML =
+          `<span class="font-semibold">${busA.english || "Bus A"}</span><br/>` +
+          `From <span class="font-mono">${fromName}</span> to <span class="font-mono">${transferStop}</span>`;
+        step1.appendChild(info1);
+
+        // segment for busA: fromName → transferStop
+        const routeNamesA = (busA.routes || [])
+          .map((r) => r && r.name)
+          .filter(Boolean);
+        const lowerA = routeNamesA.map((n) => normalizeName(n));
+        const fromIdxA = lowerA.indexOf(normalizeName(fromName));
+        const transferIdxA = lowerA.indexOf(transferStop);
+        if (
+          fromIdxA !== -1 &&
+          transferIdxA !== -1 &&
+          fromIdxA !== transferIdxA
+        ) {
+          const startA = Math.min(fromIdxA, transferIdxA);
+          const endA = Math.max(fromIdxA, transferIdxA);
+          const segmentA = routeNamesA.slice(startA, endA + 1);
+          const routesListA = createRouteList(segmentA);
+          step1.appendChild(routesListA);
+        }
+
+        // STEP 2 – Bus B: transferStop → toName + segment list
+        const step2 = document.createElement("div");
+        step2.className = "flex flex-col mt-2";
+
+        const img2 = document.createElement("img");
+        img2.src = imageBase + busB.image;
+        img2.alt = busB.english || "Bus B";
+        img2.className = "w-full h-36 object-cover rounded-sm";
+        step2.appendChild(img2);
+
+        const info2 = document.createElement("div");
+        info2.className = "mt-2 text-xs text-center";
+        info2.innerHTML =
+          `<span class="font-semibold">${busB.english || "Bus B"}</span><br/>` +
+          `Then from <span class="font-mono">${transferStop}</span> to <span class="font-mono">${toName}</span>`;
+        step2.appendChild(info2);
+
+        const routeNamesB = (busB.routes || [])
+          .map((r) => r && r.name)
+          .filter(Boolean);
+        const lowerB = routeNamesB.map((n) => normalizeName(n));
+        const transferIdxB = lowerB.indexOf(transferStop);
+        const toIdxB = lowerB.indexOf(normalizeName(toName));
+        if (transferIdxB !== -1 && toIdxB !== -1 && transferIdxB !== toIdxB) {
+          const startB = Math.min(transferIdxB, toIdxB);
+          const endB = Math.max(transferIdxB, toIdxB);
+          const segmentB = routeNamesB.slice(startB, endB + 1);
+          const routesListB = createRouteList(segmentB);
+          step2.appendChild(routesListB);
+        }
+
+        card.appendChild(step1);
+        card.appendChild(step2);
+        list.appendChild(card);
+      });
+
+      container.appendChild(list);
+    }
+  }
+
+  // ---------- BOOTSTRAP ----------
+
+  window.addEventListener("DOMContentLoaded", () => {
+    const container = document.getElementById("routeFinder");
+    if (!container) return;
+
+    let stops = [];
+    let buses = [];
+
+    try {
+      stops = JSON.parse(container.dataset.stops || "[]");
+    } catch (e) {
+      console.error("Failed to parse stops from dataset", e);
+    }
+    try {
+      buses = JSON.parse(container.dataset.buses || "[]");
+    } catch (e) {
+      console.error("Failed to parse buses from dataset", e);
+    }
+
+    const currentInput = document.getElementById("current");
+    const futureInput = document.getElementById("future");
+    const useLocationBtn = document.getElementById("useLocation");
+    const showRouteBtn = document.getElementById("showRouteBtn");
+    const resultsContainer = document.getElementById("routeResults");
+
+    if (
+      !currentInput ||
+      !futureInput ||
+      !useLocationBtn ||
+      !showRouteBtn ||
+      !stops.length ||
+      !buses.length
+    ) {
+      return;
+    }
+
+    const IMAGE_BASE =
+      "https://kzeurlsggbufntivnqii.supabase.co/storage/v1/object/public/Img/";
+
+    // Use my location => pick nearest stop (multiple geo attempts)
+    useLocationBtn.addEventListener("click", async () => {
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by this browser.");
+        return;
+      }
+
+      useLocationBtn.disabled = true;
+
+      try {
+        const pos = await getPositionWithRetries(
+          {
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0,
+          },
+          3
+        );
+
+        const { latitude, longitude } = pos.coords;
+        const { bestStop } = findNearestStop(latitude, longitude, stops);
+
+        if (!bestStop) {
+          alert("No nearby stops with coordinates found.");
+        } else {
+          currentInput.value = bestStop.name;
+        }
+      } catch (err) {
+        console.error("Geolocation error after retries:", err);
+        alert("Could not get your location.");
+      } finally {
+        useLocationBtn.disabled = false;
+      }
+    });
+
+    // Show Route => list buses & hops
+    showRouteBtn.addEventListener("click", () => {
+      const fromName = currentInput.value.trim();
+      const toName = futureInput.value.trim();
+
+      if (!fromName || !toName) {
+        alert("Please fill both current location and future destination.");
+        return;
+      }
+
+      const directTrips = findDirectBuses(fromName, toName, buses);
+      const transferOptions =
+        directTrips.length === 0
+          ? findTransferOptions(fromName, toName, buses, 10)
+          : findTransferOptions(fromName, toName, buses, 5);
+
+      renderRouteResults(resultsContainer, {
+        fromName,
+        toName,
+        directTrips,
+        transfers: transferOptions,
+        imageBase: IMAGE_BASE,
+      });
+    });
+  });
+</script>
+
+<style>
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+</style>
