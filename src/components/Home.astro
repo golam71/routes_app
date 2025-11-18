@@ -1,3 +1,53 @@
+---
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("Missing SUPABASE_URL or SUPABASE_KEY env vars");
+  throw new Error("Supabase env vars not set");
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// get full bus data (with images + routes)
+const { data: busData, error } = await supabase
+  .from("bus_data")
+  .select("id, english, bangle, image, routes, time, service_type");
+
+if (error) {
+  console.error("Error loading bus data:", error);
+}
+
+// Build unique stops with coords from all routes
+const stopMap = new Map<
+  string,
+  { name: string; lat: number | null; lon: number | null }
+>();
+
+for (const bus of busData ?? []) {
+  if (!Array.isArray(bus.routes)) continue;
+  for (const r of bus.routes) {
+    if (!r) continue;
+
+    const name = (r.name ?? "").trim();
+    if (!name) continue;
+
+    if (!stopMap.has(name)) {
+      stopMap.set(name, {
+        name,
+        lat: typeof r.lat === "number" ? r.lat : r.lat ? Number(r.lat) : null,
+        lon: typeof r.lon === "number" ? r.lon : r.lon ? Number(r.lon) : null,
+      });
+    }
+  }
+}
+
+const stops = Array.from(stopMap.values());
+const autoCompleteArray = stops.map((s) => s.name);
+---
+
 <!-- Icon sprite (hidden) -->
 <svg style="display: none">
   <symbol viewBox="0 0 24 24" id="material-symbols-location-on">
@@ -63,7 +113,7 @@
   <div id="routeResults" class="mt-6 mx-4 space-y-4"></div>
 
   <datalist id="datalist">
-    {autoCompleteArray.map((a) => <option key={a} value={a} />)}
+    {autoCompleteArray.map((a) => <option value={a} />)}
   </datalist>
 </div>
 
@@ -141,29 +191,21 @@
     return names.includes(target);
   }
 
-  // DIRECT BUSES – deduped by bus.id + from + to
   function findDirectBuses(fromName, toName, buses) {
     const fromN = normalizeName(fromName);
     const toN = normalizeName(toName);
 
-    const results = [];
-    const seen = new Set();
+    return buses
+      .map((bus) => {
+        const names = (bus.routes || []).map((r) => normalizeName(r && r.name));
+        const fromIdx = names.indexOf(fromN);
+        const toIdx = names.indexOf(toN);
 
-    for (const bus of buses) {
-      const names = (bus.routes || []).map((r) => normalizeName(r && r.name));
-      const fromIdx = names.indexOf(fromN);
-      const toIdx = names.indexOf(toN);
+        if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return null;
 
-      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) continue;
-
-      const key = `${bus.id}-${fromN}-${toN}`;
-      if (seen.has(key)) continue;
-
-      seen.add(key);
-      results.push({ bus, fromIdx, toIdx });
-    }
-
-    return results;
+        return { bus, fromIdx, toIdx };
+      })
+      .filter(Boolean);
   }
 
   function findTransferOptions(fromName, toName, buses, maxResults = 10) {
